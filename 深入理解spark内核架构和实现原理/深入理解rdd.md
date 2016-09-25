@@ -27,5 +27,18 @@
 
 ## rdd 的依赖关系
 * rdd 的依赖关系包含两个纬度，一个是子 rdd 由哪些父 rdd 转换而来，另一个是子 rdd 的partition 由哪些父 rdd 的 partition 转换而来。spark 将 rdd 的依赖关系分为两种，一种是窄依赖，一种是宽依赖。对于窄依赖而言父 rdd 与子 rdd 是一一对应的，父 rdd 的 partition 与子 rdd 的 partition 也是一一对应的。对于宽依赖并非如此。
-* 窄依赖，
-* 宽依赖，
+* 窄依赖是指父 rdd 的一个 partition 只能被子 rdd 的一个 parttion 使用。
+   - map，filter，union 都是窄依赖，某些 join 也是窄依赖（子 rdd 的 partition 只是和已知的，特定的父 rdd 的 partition 进行 join）。对于窄依赖有两种具体实现，一种是一对一的依赖，即 OneToOneDependency，这种依赖子 rdd 的 partition 只依赖父 rdd 中相同 ID 的 partition。另一种是范围的依赖，即RangeDependency，它仅仅在 union 操作中使用。
+* 宽依赖是指父 rdd 的一个 partition 被子 rdd 的多个 partition 使用。
+   - reduceByKey，groupByKey，某些 join（子 rdd 的 partition 和父 rdd 的所有 partition 进行 join）宽依赖只有一种实现，即 ShuffleDependency。宽依赖支持两种 ShuffleManager，基于 Hash 的 Shuffle 机制（HashShuffleManager）和基于 Sort 的 Shuffle 机制（SortShuffleManager）。
+   
+## rdd 的 DAG 生成和 Stage 划分
+* rdd 的 DAG 生成和 Stage 的划分是由 DAGScheduler 来完成的。DAGScheduler 根据用户提交的应用程序的 rdd 的依赖关系生成 DAG，并根据依赖关系将 DAG 划分为不同的 Stage，划分 Stage 的标准是以宽依赖为节点的。因为，对于窄依赖而言，partition 的转换操作可以在同一个线程里完成，所有窄依赖操作都会被划分到同一个阶段中；对于宽依赖而言，必须等待父 rdd shuffle 完成后才能进行接下来的计算，因此宽依赖就是 spark 划分 stage 的依据。DAGScheduler 会为每一个 stage 生成一批 task（taskSet），这些 task 的计算逻辑完成相同只是在处理不同 partition 的数据。
+
+## rdd 的计算
+* rdd 的计算最终是由 task 来完成的。
+  - task 简介：spark 的 task 分为两种，一种是 ShuffleMapTask，另外一种是 ResultTask。除了 DAG 的最后一个阶段是 ResultTask，其余所有阶段都是 ShuffleMapTask。这些 task 会被 TaskScheduler 通过 cluster Manager 发送到 executor 中去执行。
+  - task 执行的起点：org.apache.spark.scheduler.Task 的 run 方法会调用 ShuffleMapTask 或者 ResultTask 的 runTask 方法，runTask 方法又会调用 org.apache.spark.rdd.RDD 的 iterator 方法，计算由此开始。iterator 方法会首先检查存储级别，如果存储级别不是 None，就检查是否有缓存，如果有则直接读取缓存结果，如果没有则进行计算。如果存储级别是 None，检查是否有 checkPoint，如果有 checkPoint 则直接读取结果，如果没有则进行计算。
+  
+## spark env 中包含的重要信息
+
