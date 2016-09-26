@@ -41,4 +41,17 @@
   - task 执行的起点：org.apache.spark.scheduler.Task 的 run 方法会调用 ShuffleMapTask 或者 ResultTask 的 runTask 方法，runTask 方法又会调用 org.apache.spark.rdd.RDD 的 iterator 方法，计算由此开始。iterator 方法会首先检查存储级别，如果存储级别不是 None，就检查是否有缓存，如果有则直接读取缓存结果，如果没有则进行计算。如果存储级别是 None，检查是否有 checkPoint，如果有 checkPoint 则直接读取结果，如果没有则进行计算。
   
 ## spark env 中包含的重要信息
+* 当用户创建 spark context 时会创建 spark env，spark env 中包含了一个节点运行所需要的所有环境信息。
+   - org.apache.spark.CacheManager，缓存管理者它通过调用 BlockManager （块管理者）将 RDD 缓存，如果当前 RDD 计算过且把结果缓存起来，那么后续的运算都可以通过 BlockManager 来直接读取结果。
+   - akka.actor.ActorSystem，运行在 Driver 上的是 sparkDriver；运行在 Executor 上的是 sparkExecutor。
+   - org.apache.spark.serializer.Serializer，序列化和反序列化器。
+   - org.apache.spark.MapOutputTracker 用于保存 ShuffleMapTask 输出结果的位置信息。运行在 Driver 上的是 MapOutputTrackerMaster，运行在 Executor 上的是 MapOutputTrackerWorker。                    
+   - MapOutputTrackerWorker 会从 MapOutputTrackerMaster 那里查询输出结果的位置信息。
+   - org.apache.spark.broadcast.BroadcastManager，广播变量管理者。
+   - org.apache.spark.shuffle.ShuffleManager，shuffle 管理者，Driver 端会注册 shuffle 信息，Executor 端会 Driver 端上报和获取 shuffle 信息。
+   - org.apache.spark.network.BlockTransferService，当前支持 netty 和 nio 两种方式 
+   - org.apache.spark.HttpFileServer，提供 http 服务的 server，主要用于 executor 端下载依赖。
+   - org.apache.spark.shuffle.ShuffleMemoryManager，shuffle 内存的管理者，用于管理 shuffle 过程中内存的使用。为了让每个 thread 公平的获取内存资源，对于 N 个 thread ，每个 thread 至少可以申请 1/(2*N)，至多申请 1/(N)。
+   
+
 
